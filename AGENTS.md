@@ -4,7 +4,7 @@
 Check the `[framework]` section in `codex.toml` before starting work.
 
 - `hybrid`: Claude is Planner, you are a Worker. Follow the assigned worker spec and stay within worker scope.
-- `codex-only`: You may be the Planner when running `codex --agent planner`, or a Worker when running any worker agent.
+- `codex-only`: You may be the Planner (root agent reads this file automatically), or a Worker when spawned as a subagent.
 
 ## When Running as Planner (codex-only mode)
 Follow the `codex-spec` -> `codex-plan` -> `codex-dispatch` -> `codex-review` -> `codex-status` workflow for tracked work.
