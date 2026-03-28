@@ -156,7 +156,7 @@ Subscriptions: 1x ChatGPT Plus (single account sufficient)
 
 1. Install Codex CLI.
 2. Set `framework.mode = "codex-only"` in `codex.toml`.
-3. Run `codex --agent planner`.
+3. Run `codex` in the project directory (AGENTS.md provides planner instructions automatically).
 4. Interact naturally: `"Write a spec for feature X"`, `"Create a plan"`, `"Dispatch workers"`, `"Review output"`.
 
 ### Interaction Model

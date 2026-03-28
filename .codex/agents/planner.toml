@@ -21,7 +21,7 @@ Must rules:
 
 Must NOT rules:
 1. Do not write production code directly; use Workers.
-2. Do not commit or push to main without review.
+2. Never commit directly to main. Always use feature branches; only merge to main after review and user approval.
 3. Do not skip the review step after Workers complete.
 
 Dispatch rules:

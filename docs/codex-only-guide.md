@@ -35,8 +35,10 @@ enhanced_review = false
 ### Starting the Planner
 
 ```bash
-codex --agent planner
+codex
 ```
+
+When `framework.mode` is set to `"codex-only"` in `codex.toml`, Codex CLI automatically reads `AGENTS.md` from the project root, which provides planner behavioral instructions. No special flag is needed.
 
 ### Workflow Walkthrough
 
@@ -52,7 +54,7 @@ Write a spec for a REST API endpoint that returns user profiles
 
 What happens:
 - The `codex-spec` skill is auto-matched.
-- A structured spec is produced, typically in `spec.md` or your repo's working-memory location.
+- A structured spec is produced at `notes/working-memory/<task-slug>/spec.md`.
 - The planner confirms scope and acceptance criteria before dispatching implementation work.
 
 #### Step 2: Plan
@@ -66,7 +68,7 @@ Create a plan from this spec
 What happens:
 - The `codex-plan` skill is auto-matched.
 - The planner creates an implementation plan with dependencies, parallelization groups, and validation steps.
-- The plan is usually saved as `task_plan.md` or under `notes/working-memory/<task>/task_plan.md`.
+- The plan is saved at `notes/working-memory/<task-slug>/task_plan.md`.
 
 #### Step 3: Dispatch
 
@@ -190,10 +192,10 @@ If you are running codex-only mode on a single ChatGPT Plus account, start conse
 The expected entrypoint is:
 
 ```bash
-codex --agent planner
+codex
 ```
 
-If your installed Codex CLI build does not support `--agent`, update Codex CLI first. If your build exposes an equivalent named-agent invocation, use that syntax while still targeting the `planner` agent defined in `.codex/agents/planner.toml`.
+Run `codex` in the project root. Codex CLI automatically reads `AGENTS.md` and `codex.toml`, which together provide planner behavioral instructions when `framework.mode = "codex-only"`. The planner agent config at `.codex/agents/planner.toml` is used when the planner spawns subagents that reference it.
 
 ### Skill Auto-Matching
 

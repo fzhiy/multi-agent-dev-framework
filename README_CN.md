@@ -156,7 +156,7 @@ graph TB
 
 1. 安装 Codex CLI。
 2. 在 `codex.toml` 中设置 `framework.mode = "codex-only"`。
-3. 运行 `codex --agent planner`。
+3. 在项目目录中运行 `codex`（AGENTS.md 自动提供规划器指令）。
 4. 直接自然交互：`"Write a spec for feature X"`、`"Create a plan"`、`"Dispatch workers"`、`"Review output"`。
 
 ### 交互模型

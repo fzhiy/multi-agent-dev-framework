@@ -178,3 +178,4 @@ Record:
 - Never reuse the same working directory for multiple Workers
 - Never omit interface contracts when cross-worker dependencies exist
 - Never skip the mandatory review step after Workers complete
+- Workers must commit only to their assigned feature branch, never directly to main
