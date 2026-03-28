@@ -1,0 +1,19 @@
+# Codex CLI project configuration
+# Used when Codex workers are dispatched by Claude via MCP
+
+[model]
+default = "gpt-5.4"
+
+[agents]
+# Max concurrent subagent threads per worker.
+# Conservative setting to avoid GPT Plus quota drain bug (#9748).
+max_threads = 3
+
+# Nesting depth: 1 = direct children only, no grandchildren.
+# Keeps the hierarchy flat and predictable.
+max_depth = 1
+
+[sandbox]
+# Default sandbox mode for the root agent.
+# Subagents override this via their own TOML configs.
+mode = "write-allow"
