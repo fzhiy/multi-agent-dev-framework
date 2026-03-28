@@ -70,6 +70,44 @@
   3. 或者提供 .pyi stub 文件给依赖方 Worker
   4. Planner 承担集成责任：合并后修复接口问题
 
+## Issue #6: 框架内部文档泄漏到项目仓库
+
+- **日期**: 2026-03-28
+- **阶段**: 发布前脱敏
+- **问题**: 复制框架到项目后，`docs/practice-issues-log.md` 和 `docs/skills-ecosystem-analysis.md` 被 git 跟踪并推送到公开仓库。这些是框架开发者的内部备忘，不属于项目代码
+- **根因**: 框架的 `.gitignore` 模板没有排除框架自身的文档。复制 `docs/` 目录时连带复制了内部文档
+- **影响**: 内部开发笔记公开暴露
+- **修复建议**:
+  1. 在框架 `.gitignore` 模板中默认排除 `docs/practice-issues-log.md` 和 `docs/skills-ecosystem-analysis.md`
+  2. 或在复制命令中只复制必要的 docs: `cp -r docs/skills/` 而非整个 `docs/`
+  3. 或将框架内部文档移到不会被复制的位置（如 `meta/` 目录）
+
+## Issue #7: Git commit 作者信息泄漏
+
+- **日期**: 2026-03-28
+- **阶段**: 发布前脱敏
+- **问题**: 所有 commit 使用全局 git config 中的真名和大学邮箱，推送到公开仓库后暴露个人信息
+- **根因**: 框架没有提示用户在新项目中配置 git 作者信息。git 默认继承全局 `~/.gitconfig`
+- **影响**: 个人身份信息通过 git history 公开
+- **修复建议**:
+  1. 在 README Quick Start 中加入 `git config user.email` 配置提示
+  2. 或在框架初始化脚本中自动检查并提示
+  3. 发布前用 `git filter-branch` 统一作者信息
+
+## Issue #8: Commit message 过于冗长
+
+- **日期**: 2026-03-28
+- **阶段**: 全流程
+- **问题**: Claude 生成的 commit message 包含多行详细说明和 Co-Authored-By 标签，不符合简洁的开发规范
+- **根因**: Claude 默认生成详尽的 commit body 以提供上下文，但在实际项目中显得冗余
+- **影响**: git log 难以快速浏览
+- **修复建议**:
+  1. 在 CLAUDE.md 中约束: "commit message 使用 conventional commit 格式，一行标题即可"
+  2. 仅在复杂变更时使用 body
+  3. 不自动添加 Co-Authored-By（除非用户要求）
+
+---
+
 ## 实践总结: 已验证有效的模式
 
 以下模式在 hot-repo 项目中验证通过，已固化为框架标准能力：
@@ -100,29 +138,32 @@
 
 ## 框架迭代路线图
 
-### 高优先级 (解决架构级问题)
+### 高优先级 (架构级)
 
-| 问题 | 方案 | 对应 Issue |
-|------|------|-----------|
-| Worker 共享 cwd 导致分支污染 | 在 dispatch 前由 Planner 预创建 git worktree，传入独立 cwd | #4 |
-| Worker 间接口不匹配 | 在 worker spec 中增加"接口契约"，定义跨 Worker 的函数签名和类型 | #5 |
-| Claude 可能越过架构直接实现 | 在 CLAUDE.md 中添加行为约束规则 | #1 |
+| 问题 | 方案 | Issue |
+|------|------|-------|
+| Worker 共享 cwd 分支污染 | Planner 预创建 git worktree，传独立 cwd | #4 |
+| Worker 间接口不匹配 | worker spec 增加接口契约（函数签名+类型） | #5 |
+| Claude 越过架构直接实现 | CLAUDE.md 添加行为约束 | #1 |
+| 框架内部文档泄漏到项目 | 内部文档移到 `meta/` 或调整复制命令 | #6 |
+| Commit message 过于冗长 | CLAUDE.md 约束 conventional commit 格式 | #8 |
 
-### 中优先级 (提升效率)
+### 中优先级 (效率)
+
+| 方向 | 方案 | Issue |
+|------|------|-------|
+| Git 作者信息提示 | Quick Start 加入 git config 配置步骤 | #7 |
+| Review→Fix 自动循环 | `/review-workers` 增加重分发逻辑 | — |
+| 接口 stub 生成 | `/dispatch` 为依赖方 Worker 生成 .pyi | — |
+| 测试覆盖率追踪 | `/status` 集成 pytest --cov | — |
+
+### 低优先级 (生态)
 
 | 方向 | 方案 |
 |------|------|
-| Review→Fix 自动循环 | 在 `/review-workers` 中增加自动重新分发修改任务的逻辑 |
-| 接口 stub 生成 | 在 `/dispatch` 中为依赖方 Worker 自动生成 .pyi stub 文件 |
-| 测试覆盖率追踪 | 在 `/status` 中集成 pytest --cov 结果汇总 |
-
-### 低优先级 (生态扩展)
-
-| 方向 | 方案 |
-|------|------|
-| 安装 GitHub MCP Server | 自动化 PR/Issue 管理 |
-| 安装 create-plan (openai/skills) | 评估官方实验性 skill |
-| 统一 token 成本追踪 | 在 progress.md 中记录每个 Worker 的 token 消耗 |
+| GitHub MCP Server | 自动化 PR/Issue 管理 |
+| create-plan (openai/skills) | 评估官方实验性 skill |
+| token 成本追踪 | progress.md 记录 Worker token 消耗 |
 
 ## 待记录
 
