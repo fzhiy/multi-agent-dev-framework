@@ -13,6 +13,7 @@
 - **对抗式审查循环** -- Claude 审查 GPT 的输出，在合并前捕获错误。最多 3 轮迭代。
 - **并行执行** -- 最多 3 个工作节点同时运行，各自在独立的 git worktree 中工作，不会产生合并冲突。
 - **模型分工** -- 复杂实现用 gpt-5.4，受限的分析和测试任务用更经济的 gpt-5.4-mini。
+- **提供商灵活性** -- 可运行于 Claude + GPT（混合模式）或仅 GPT（Codex 独立模式）。单一订阅也能完成全流程。
 
 ## 架构
 
@@ -65,17 +66,17 @@ graph TB
 
 ## 前置条件
 
-| 工具 | 用途 | 安装 |
-|------|------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 规划器/审查器 | `npm i -g @anthropic-ai/claude-code` |
-| [Codex CLI](https://github.com/openai/codex) | Level 1 工作节点 | `npm i -g @openai/codex` |
-| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP 桥接 | 通过 `uvx` 自动安装 |
-| tmux（可选） | 会话管理 | `apt install tmux` / `brew install tmux` |
+| 工具 | 用途 | 适用模式 | 安装 |
+|------|------|----------|------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 规划器/审查器 | 混合模式 | `npm i -g @anthropic-ai/claude-code` |
+| [Codex CLI](https://github.com/openai/codex) | 规划器 + 工作节点 | 混合模式、Codex 独立模式 | `npm i -g @openai/codex` |
+| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP 桥接 | 混合模式 | 通过 `uvx` 自动安装 |
+| tmux（可选） | 会话管理 | 混合模式、Codex 独立模式 | `apt install tmux` / `brew install tmux` |
 
 ### 订阅要求
 
-- 1x **Claude Max**（Opus 4）-- 规划器和审查器
-- 1-3x **ChatGPT Plus** -- 工作池（每个账号 = 1 个 Codex Worker）
+- **混合模式**：1x **Claude Max** + 1-3x **ChatGPT Plus**
+- **Codex 独立模式**：1x **ChatGPT Plus**（单账号即可）
 
 ## 快速开始
 
@@ -100,6 +101,76 @@ git config user.name "Your Name"
 git config user.email "your-public-email@example.com"
 ```
 
+## Codex 独立模式
+
+仅使用 Codex CLI 和 GPT Plus 订阅即可运行完整的多智能体工作流，无需 Claude Code。
+
+### 架构（Codex 独立模式）
+
+```mermaid
+graph TB
+    Human["开发者"] --> Planner
+
+    subgraph "Level 0 — 规划层"
+        Planner["Codex CLI 根代理<br/>planner<br/><i>via .codex/agents/planner.toml</i>"]
+        Reviewer["reviewer<br/>gpt-5.4 · 只读"]
+    end
+
+    subgraph "Level 1 — 原生子代理工作池"
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
+    end
+
+    subgraph "Level 2 — Worker 子代理"
+        impl["implementer<br/>gpt-5.4 · 可写"]
+        analyzer["analyzer<br/>gpt-5.4-mini · 只读"]
+        tester["tester<br/>gpt-5.4-mini · 可写"]
+    end
+
+    Planner -->|"原生子代理"| W1
+    Planner -->|"原生子代理"| W2
+    Planner -->|"原生子代理"| W3
+
+    W1 --> impl
+    W1 --> analyzer
+    W1 --> tester
+    W2 -.->|"diff"| Reviewer
+    W1 -.->|"diff"| Reviewer
+    W3 -.->|"diff"| Reviewer
+    Reviewer -.->|"findings"| Planner
+
+    Planner -->|"APPROVED"| Merge["合并到 main"]
+    Planner -->|"CHANGES_REQUESTED"| W1
+```
+
+### 前置条件（Codex 独立模式）
+
+| 工具 | 用途 | 安装 |
+|------|------|------|
+| [Codex CLI](https://github.com/openai/codex) | 规划器 + 工作节点 | `npm i -g @openai/codex` |
+
+订阅：1x ChatGPT Plus（单账号即可）
+
+### 快速开始（Codex 独立模式）
+
+1. 安装 Codex CLI。
+2. 在 `codex.toml` 中设置 `framework.mode = "codex-only"`。
+3. 运行 `codex --agent planner`。
+4. 直接自然交互：`"Write a spec for feature X"`、`"Create a plan"`、`"Dispatch workers"`、`"Review output"`。
+
+### 交互模型
+
+| 混合模式 | Codex 独立模式 |
+|----------|----------------|
+| `/spec <desc>` | `"Write a spec for <desc>"` |
+| `/plan` | `"Create a plan from this spec"` |
+| `/dispatch` | `"Dispatch workers"` |
+| `/review-workers` | `"Review the worker output"` |
+| `/status` | `"Show task status"` |
+
+详见 [docs/codex-only-guide.md](docs/codex-only-guide.md) 获取完整的设置与工作流指南。
+
 ## 在新项目中使用
 
 ### 第一步：复制框架文件
@@ -108,11 +179,13 @@ git config user.email "your-public-email@example.com"
 cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,.claude,docs,notes} /path/to/your-project/
 ```
 
+如果只使用 Codex 独立模式且不需要 Claude Code 斜杠命令，可以跳过 `.claude/`。
+
 这会为你的项目添加以下结构：
 
 ```
 your-project/
-├── .claude/commands/                     # Claude Code 斜杠命令
+├── .claude/commands/                     # Claude Code 斜杠命令（混合模式）
 │   ├── spec.md                           # /spec — 需求 → 结构化规格
 │   ├── plan.md                           # /plan — 规格 → 实现计划
 │   ├── dispatch.md                       # /dispatch — 计划 → Worker 分发
@@ -120,17 +193,27 @@ your-project/
 │   └── status.md                         # /status — 查看任务进度
 ├── .codex/
 │   ├── agents/
+│   │   ├── planner.toml                  # 规划器/协调器（Codex 独立模式）
+│   │   ├── reviewer.toml                 # 对抗式审查器（Codex 独立模式）
 │   │   ├── implementer.toml              # 代码编写器 (gpt-5.4)
 │   │   ├── analyzer.toml                 # 只读分析器 (gpt-5.4-mini)
 │   │   └── tester.toml                   # 测试编写器 (gpt-5.4-mini)
 │   └── skills/
+│       ├── codex-spec/                   # 结构化规格生成（Codex 独立模式）
+│       ├── codex-plan/                   # 实现计划生成（Codex 独立模式）
+│       ├── codex-dispatch/               # 通过原生子代理分发 Worker（Codex 独立模式）
+│       ├── codex-review/                 # 对抗式审查循环（Codex 独立模式）
+│       ├── codex-status/                 # 任务进度监控（Codex 独立模式）
 │       ├── repo-working-memory/          # 持久化上下文追踪
 │       ├── requirement-spec/             # 结构化需求规格生成
 │       ├── create-plan/                  # 实现计划生成
 │       └── task-dispatcher/              # Worker 分发规划
+├── AGENTS.md                             # 面向所有代理的仓库说明
 ├── codex.toml                            # Codex 项目配置
-├── docs/skills/
-│   └── external-skill-review.md          # 技能治理策略
+├── docs/
+│   ├── codex-only-guide.md               # Codex 独立模式的详细设置与用法
+│   └── skills/
+│       └── external-skill-review.md      # 技能治理策略
 └── notes/working-memory/                 # 任务追踪目录
 ```
 
@@ -199,6 +282,11 @@ claude                         # 启动 Claude Code（规划器）
 | `create-plan` | 规格 → 含依赖关系的实现计划 | Codex 自动匹配 |
 | `task-dispatcher` | 计划 → Worker 任务分配和分支策略 | Codex 自动匹配 |
 | `repo-working-memory` | 跨会话的持久化任务追踪 | Codex 自动匹配 |
+| `codex-spec` | 结构化规格生成（Codex 独立模式） | 自动匹配 |
+| `codex-plan` | 实现计划生成（Codex 独立模式） | 自动匹配 |
+| `codex-dispatch` | 通过原生子代理分发 Worker（Codex 独立模式） | 自动匹配 |
+| `codex-review` | 通过 reviewer 代理执行对抗式审查（Codex 独立模式） | 自动匹配 |
+| `codex-status` | 任务进度监控（Codex 独立模式） | 自动匹配 |
 
 ## 工作流模式
 
@@ -267,11 +355,15 @@ sh .codex/skills/repo-working-memory/scripts/check-complete.sh my-feature
 | `agents.max_threads` | `3` | 每个 Worker 的最大并发子代理线程数 |
 | `agents.max_depth` | `1` | 嵌套深度（1 = 仅直接子代理） |
 | `sandbox.mode` | `write-allow` | 默认沙箱模式 |
+| `framework.mode` | `hybrid` | 框架模式：`"hybrid"` 或 `"codex-only"` |
+| `framework.enhanced_review` | `false` | 在 Codex 独立模式下启用第二轮 MCP 审查 |
 
 ### 代理配置
 
 | 代理 | 模型 | 沙箱 | 职责 |
 |------|------|------|------|
+| `planner` | gpt-5.4 | write-allow | 规划、审查、协调（Codex 独立模式） |
+| `reviewer` | gpt-5.4 | read-only | 对抗式代码审查（Codex 独立模式） |
 | `implementer` | gpt-5.4 | write-allow | 编写生产代码 |
 | `analyzer` | gpt-5.4-mini | read-only | 分析依赖和接口 |
 | `tester` | gpt-5.4-mini | write-allow | 编写和运行测试 |
@@ -323,14 +415,23 @@ web_search = "disabled"
 | 文件 | 用途 |
 |------|------|
 | `codex.toml` | 项目级 Codex 配置（模型、线程、沙箱） |
+| `AGENTS.md` | 规划器和工作节点共享的仓库说明 |
 | `.claude/commands/*.md` | Claude Code 斜杠命令（/spec, /plan, /dispatch, /review-workers, /status） |
+| `.codex/agents/planner.toml` | Codex 独立模式下的 GPT-5.4 规划器/协调器代理 |
+| `.codex/agents/reviewer.toml` | Codex 独立模式下的 GPT-5.4 只读审查器代理 |
 | `.codex/agents/implementer.toml` | GPT-5.4 代码编写子代理 |
 | `.codex/agents/analyzer.toml` | GPT-5.4-mini 只读分析子代理 |
 | `.codex/agents/tester.toml` | GPT-5.4-mini 测试编写子代理 |
+| `.codex/skills/codex-spec/` | Codex 独立模式的结构化规格生成技能 |
+| `.codex/skills/codex-plan/` | Codex 独立模式的实现规划技能 |
+| `.codex/skills/codex-dispatch/` | Codex 独立模式的 Worker 分发技能 |
+| `.codex/skills/codex-review/` | Codex 独立模式的对抗式审查技能 |
+| `.codex/skills/codex-status/` | Codex 独立模式的任务状态技能 |
 | `.codex/skills/requirement-spec/` | 结构化需求规格生成技能 |
 | `.codex/skills/create-plan/` | 实现计划生成技能 |
 | `.codex/skills/task-dispatcher/` | Worker 分发规划技能 |
 | `.codex/skills/repo-working-memory/` | 持久化上下文追踪技能 |
+| `docs/codex-only-guide.md` | Codex 独立模式的详细设置与工作流指南 |
 | `docs/skills/external-skill-review.md` | 外部技能治理策略 |
 | `notes/working-memory/` | 活跃任务追踪目录 |
 

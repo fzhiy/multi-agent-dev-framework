@@ -13,6 +13,7 @@ Zero-custom-code multi-agent development framework: Claude Opus plans and review
 - **Adversarial review loop** -- Claude reviews GPT output, catches errors before merge. Up to 3 review iterations.
 - **Parallel execution** -- up to 3 workers running simultaneously, each in its own git worktree. No merge conflicts.
 - **Model-specific roles** -- expensive models (gpt-5.4) for complex implementation, cheaper models (gpt-5.4-mini) for constrained analysis and testing.
+- **Provider flexibility** -- run with Claude + GPT (hybrid mode) or GPT-only (codex-only mode). Single subscription sufficient.
 
 ## Architecture
 
@@ -65,17 +66,17 @@ Human Request
 
 ## Prerequisites
 
-| Tool | Purpose | Install |
-|------|---------|---------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 planner/reviewer | `npm i -g @anthropic-ai/claude-code` |
-| [Codex CLI](https://github.com/openai/codex) | Level 1 workers | `npm i -g @openai/codex` |
-| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP bridge | auto-installed via `uvx` |
-| tmux (optional) | Session management | `apt install tmux` / `brew install tmux` |
+| Tool | Purpose | Required In | Install |
+|------|---------|-------------|---------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 planner/reviewer | Hybrid mode | `npm i -g @anthropic-ai/claude-code` |
+| [Codex CLI](https://github.com/openai/codex) | Planner + Workers | Hybrid mode, Codex-only mode | `npm i -g @openai/codex` |
+| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP bridge | Hybrid mode | auto-installed via `uvx` |
+| tmux (optional) | Session management | Hybrid mode, Codex-only mode | `apt install tmux` / `brew install tmux` |
 
 ### Subscriptions
 
-- 1x **Claude Max** (Opus 4) -- planner and reviewer
-- 1-3x **ChatGPT Plus** -- worker pool (each account = 1 Codex worker)
+- **Hybrid mode**: 1x **Claude Max** + 1-3x **ChatGPT Plus**
+- **Codex-only mode**: 1x **ChatGPT Plus** (single account sufficient)
 
 ## Quick Start
 
@@ -100,6 +101,76 @@ git config user.name "Your Name"
 git config user.email "your-public-email@example.com"
 ```
 
+## Codex-Only Mode
+
+Run the full multi-agent workflow with only Codex CLI and a GPT Plus subscription -- no Claude Code needed.
+
+### Architecture (Codex-Only)
+
+```mermaid
+graph TB
+    Human["Human"] --> Planner
+
+    subgraph "Level 0 — Planner"
+        Planner["Codex CLI root agent<br/>planner<br/><i>via .codex/agents/planner.toml</i>"]
+        Reviewer["reviewer<br/>gpt-5.4 · read-only"]
+    end
+
+    subgraph "Level 1 — Native Subagent Worker Pool"
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
+    end
+
+    subgraph "Level 2 — Worker Subagents"
+        impl["implementer<br/>gpt-5.4 · write-allow"]
+        analyzer["analyzer<br/>gpt-5.4-mini · read-only"]
+        tester["tester<br/>gpt-5.4-mini · write-allow"]
+    end
+
+    Planner -->|"native subagent"| W1
+    Planner -->|"native subagent"| W2
+    Planner -->|"native subagent"| W3
+
+    W1 --> impl
+    W1 --> analyzer
+    W1 --> tester
+    W2 -.->|"diff"| Reviewer
+    W1 -.->|"diff"| Reviewer
+    W3 -.->|"diff"| Reviewer
+    Reviewer -.->|"findings"| Planner
+
+    Planner -->|"APPROVED"| Merge["Merge to main"]
+    Planner -->|"CHANGES_REQUESTED"| W1
+```
+
+### Prerequisites (Codex-Only)
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| [Codex CLI](https://github.com/openai/codex) | Planner + Workers | `npm i -g @openai/codex` |
+
+Subscriptions: 1x ChatGPT Plus (single account sufficient)
+
+### Quick Start (Codex-Only)
+
+1. Install Codex CLI.
+2. Set `framework.mode = "codex-only"` in `codex.toml`.
+3. Run `codex --agent planner`.
+4. Interact naturally: `"Write a spec for feature X"`, `"Create a plan"`, `"Dispatch workers"`, `"Review output"`.
+
+### Interaction Model
+
+| Hybrid Mode | Codex-Only Mode |
+|-------------|-----------------|
+| `/spec <desc>` | `"Write a spec for <desc>"` |
+| `/plan` | `"Create a plan from this spec"` |
+| `/dispatch` | `"Dispatch workers"` |
+| `/review-workers` | `"Review the worker output"` |
+| `/status` | `"Show task status"` |
+
+See [docs/codex-only-guide.md](docs/codex-only-guide.md) for the full setup and workflow guide.
+
 ## Using in a New Project
 
 ### Step 1: Copy framework files
@@ -108,11 +179,13 @@ git config user.email "your-public-email@example.com"
 cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,.claude,docs,notes} /path/to/your-project/
 ```
 
+For codex-only projects, you can skip `.claude/` if you do not need Claude Code slash commands.
+
 This adds the following structure to your project:
 
 ```
 your-project/
-├── .claude/commands/                     # Claude Code slash commands
+├── .claude/commands/                     # Claude Code slash commands (hybrid mode)
 │   ├── spec.md                           # /spec — requirements → structured spec
 │   ├── plan.md                           # /plan — spec → implementation plan
 │   ├── dispatch.md                       # /dispatch — plan → Worker dispatch via MCP
@@ -120,17 +193,27 @@ your-project/
 │   └── status.md                         # /status — show task progress
 ├── .codex/
 │   ├── agents/
+│   │   ├── planner.toml                  # Planner/coordinator (codex-only)
+│   │   ├── reviewer.toml                 # Adversarial reviewer (codex-only)
 │   │   ├── implementer.toml              # Code writer (gpt-5.4)
 │   │   ├── analyzer.toml                 # Read-only analyzer (gpt-5.4-mini)
 │   │   └── tester.toml                   # Test writer (gpt-5.4-mini)
 │   └── skills/
+│       ├── codex-spec/                   # Structured spec generation (codex-only)
+│       ├── codex-plan/                   # Implementation plan generation (codex-only)
+│       ├── codex-dispatch/               # Worker dispatch via native subagents (codex-only)
+│       ├── codex-review/                 # Adversarial review loop (codex-only)
+│       ├── codex-status/                 # Task progress monitoring (codex-only)
 │       ├── repo-working-memory/          # Persistent context tracking
 │       ├── requirement-spec/             # Structured spec generation
 │       ├── create-plan/                  # Implementation plan generation
 │       └── task-dispatcher/              # Worker dispatch planning
+├── AGENTS.md                             # Repo-specific notes for all agents
 ├── codex.toml                            # Codex project config
-├── docs/skills/
-│   └── external-skill-review.md          # Skill governance policy
+├── docs/
+│   ├── codex-only-guide.md               # Detailed Codex-only setup and usage
+│   └── skills/
+│       └── external-skill-review.md      # Skill governance policy
 └── notes/working-memory/                 # Task tracking (gitignore or commit)
 ```
 
@@ -200,6 +283,11 @@ Every command has a confirmation gate -- no automatic pushes, no merges without 
 | `create-plan` | Spec → implementation plan with dependencies | Auto-matched by Codex |
 | `task-dispatcher` | Plan → Worker assignments with branch strategy | Auto-matched by Codex |
 | `repo-working-memory` | Persistent task tracking across sessions | Auto-matched by Codex |
+| `codex-spec` | Structured spec generation (codex-only) | Auto-matched |
+| `codex-plan` | Implementation plan generation (codex-only) | Auto-matched |
+| `codex-dispatch` | Worker dispatch via native subagents (codex-only) | Auto-matched |
+| `codex-review` | Adversarial review via reviewer agent (codex-only) | Auto-matched |
+| `codex-status` | Task progress monitoring (codex-only) | Auto-matched |
 
 ## Workflow Patterns
 
@@ -268,11 +356,15 @@ sh .codex/skills/repo-working-memory/scripts/check-complete.sh my-feature
 | `agents.max_threads` | `3` | Max concurrent subagent threads per worker |
 | `agents.max_depth` | `1` | Nesting depth (1 = direct children only) |
 | `sandbox.mode` | `write-allow` | Default sandbox mode |
+| `framework.mode` | `hybrid` | Framework mode: `"hybrid"` or `"codex-only"` |
+| `framework.enhanced_review` | `false` | Enable second-round MCP review in codex-only mode |
 
 ### Agent Configs
 
 | Agent | Model | Sandbox | Role |
 |-------|-------|---------|------|
+| `planner` | gpt-5.4 | write-allow | Plans, reviews, coordinates (codex-only) |
+| `reviewer` | gpt-5.4 | read-only | Adversarial code review (codex-only) |
 | `implementer` | gpt-5.4 | write-allow | Writes production code |
 | `analyzer` | gpt-5.4-mini | read-only | Analyzes dependencies and interfaces |
 | `tester` | gpt-5.4-mini | write-allow | Writes and runs tests |
@@ -324,14 +416,23 @@ Before installing external Codex skills, review them against the policy in `docs
 | File | Purpose |
 |------|---------|
 | `codex.toml` | Project-level Codex config (model, threads, sandbox) |
+| `AGENTS.md` | Repo-specific instructions shared with planner and workers |
 | `.claude/commands/*.md` | Claude Code slash commands (/spec, /plan, /dispatch, /review-workers, /status) |
+| `.codex/agents/planner.toml` | GPT-5.4 planner/coordinator agent for codex-only mode |
+| `.codex/agents/reviewer.toml` | GPT-5.4 read-only reviewer agent for codex-only mode |
 | `.codex/agents/implementer.toml` | GPT-5.4 code writer subagent |
 | `.codex/agents/analyzer.toml` | GPT-5.4-mini read-only analyzer subagent |
 | `.codex/agents/tester.toml` | GPT-5.4-mini test writer subagent |
+| `.codex/skills/codex-spec/` | Codex-only structured spec generation skill |
+| `.codex/skills/codex-plan/` | Codex-only implementation planning skill |
+| `.codex/skills/codex-dispatch/` | Codex-only worker dispatch skill |
+| `.codex/skills/codex-review/` | Codex-only adversarial review skill |
+| `.codex/skills/codex-status/` | Codex-only task status skill |
 | `.codex/skills/requirement-spec/` | Structured spec generation skill |
 | `.codex/skills/create-plan/` | Implementation plan generation skill |
 | `.codex/skills/task-dispatcher/` | Worker dispatch planning skill |
 | `.codex/skills/repo-working-memory/` | Persistent context tracking skill |
+| `docs/codex-only-guide.md` | Detailed setup and workflow guide for codex-only mode |
 | `docs/skills/external-skill-review.md` | External skill governance policy |
 | `notes/working-memory/` | Active task tracking directory |
 
