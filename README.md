@@ -1,6 +1,6 @@
 # Multi-Agent Dev Framework
 
-Zero-custom-code multi-agent development framework: Claude Opus plans and reviews, Codex CLI workers implement in parallel.
+Zero-custom-code multi-agent development framework: one agent plans and reviews, a pool of workers implements in parallel.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -9,60 +9,77 @@ Zero-custom-code multi-agent development framework: Claude Opus plans and review
 
 ## Why This Framework
 
-- **Zero custom code** -- pure configuration, no orchestration scripts. Codex CLI + MCP bridge = self-contained workers.
-- **Adversarial review loop** -- Claude reviews GPT output, catches errors before merge. Up to 3 review iterations.
+- **Zero custom code** -- pure configuration (TOML + Markdown skills), no orchestration scripts.
+- **Adversarial review loop** -- the planner reviews worker output before merge. Up to 3 review iterations.
 - **Parallel execution** -- up to 3 workers running simultaneously, each in its own git worktree. No merge conflicts.
-- **Model-specific roles** -- expensive models (gpt-5.4) for complex implementation, cheaper models (gpt-5.4-mini) for constrained analysis and testing.
-- **Provider flexibility** -- run with Claude + GPT (hybrid mode) or GPT-only (codex-only mode). Single subscription sufficient.
+- **Role-based cost optimization** -- expensive models for complex implementation, cheaper models for constrained analysis and testing.
+- **Provider flexibility** -- run with Claude + GPT ([hybrid mode](#quick-start)) or GPT-only ([codex-only mode](#codex-only-mode)). Single subscription sufficient.
 
 ## Architecture
 
 ```mermaid
 graph TB
-    Human["Human"] --> Claude
+    Human["Human Developer"] --> Planner
 
     subgraph "Level 0 — Planner"
-        Claude["Claude Opus 4<br/>Plan | Review | Merge<br/><i>via Claude Code</i>"]
+        Planner["Planner Agent<br/>Plan | Review | Merge"]
+        Reviewer["Reviewer<br/>read-only · adversarial"]
     end
 
-    subgraph "Level 1 — Worker Pool"
-        W1["Codex Worker 1"]
-        W2["Codex Worker 2"]
-        W3["Codex Worker 3"]
+    subgraph "Level 1 — Worker Pool (1-3 workers, git worktree isolation)"
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
     end
 
     subgraph "Level 2 — Subagents"
-        impl["implementer<br/>gpt-5.4 · write-allow"]
-        analyzer["analyzer<br/>gpt-5.4-mini · read-only"]
-        tester["tester<br/>gpt-5.4-mini · write-allow"]
+        impl["implementer<br/>write-allow"]
+        analyzer["analyzer<br/>read-only"]
+        tester["tester<br/>write-allow"]
     end
 
-    Claude -->|"dispatch via MCP"| W1
-    Claude -->|"dispatch via MCP"| W2
-    Claude -->|"dispatch via MCP"| W3
+    Planner -->|"dispatch"| W1
+    Planner -->|"dispatch"| W2
+    Planner -->|"dispatch"| W3
 
     W1 --> impl
     W1 --> analyzer
     W1 --> tester
 
-    impl -.->|"diff"| Claude
-    Claude -->|"APPROVED"| Merge["Merge to main"]
-    Claude -->|"CHANGES_REQUESTED"| W1
+    W1 -.->|"diff"| Reviewer
+    W2 -.->|"diff"| Reviewer
+    W3 -.->|"diff"| Reviewer
+    Reviewer -.->|"findings"| Planner
+
+    Planner -->|"APPROVED"| Merge["Merge to main"]
+    Planner -->|"CHANGES_REQUESTED"| W1
 ```
 
 ### Orchestration Flow
 
 ```
 Human Request
-  → Claude Opus plans approach
-  → Plan reviewed
-  → Dispatches 1-3 Codex Workers (parallel, via MCP)
+  → Planner creates spec and plan
+  → Plan reviewed and confirmed
+  → Dispatches 1-3 Workers (parallel, isolated git worktrees)
     → Each worker spawns analyzer/implementer/tester subagents
-    → Workers implement in isolated git worktrees
-  → Claude Opus reviews all diffs (adversarial review)
+    → Workers implement in isolation
+  → Reviewer checks all diffs (adversarial review)
   → APPROVED or CHANGES_REQUESTED (max 3 iterations)
-  → Merged to main
+  → Merged to main (with user approval)
 ```
+
+### Implementation Modes
+
+The architecture above is provider-agnostic. This framework ships with two concrete implementations:
+
+| Mode | Planner | Workers | Dispatch | Review | Guide |
+|------|---------|---------|----------|--------|-------|
+| **Hybrid** | Claude Code (Opus) | Codex CLI | MCP bridge (`codex-as-mcp`) | Cross-model: Claude reviews GPT | [Quick Start](#quick-start) |
+| **Codex-only** | Codex CLI (GPT) | Codex native subagents | Native subagent spawning | Same-model + dedicated reviewer agent | [Codex-Only Mode](#codex-only-mode) |
+
+- **Hybrid mode** -- strongest review quality through cross-model adversarial critique. Requires Claude Max + GPT Plus.
+- **Codex-only mode** -- single-subscription operation with GPT Plus only. Review mitigated by dedicated `reviewer` agent with mandatory checklist. See [docs/codex-only-guide.md](docs/codex-only-guide.md).
 
 ## Prerequisites
 
@@ -103,46 +120,7 @@ git config user.email "your-public-email@example.com"
 
 ## Codex-Only Mode
 
-Run the full multi-agent workflow with only Codex CLI and a GPT Plus subscription -- no Claude Code needed.
-
-### Architecture (Codex-Only)
-
-```mermaid
-graph TB
-    Human["Human"] --> Planner
-
-    subgraph "Level 0 — Planner"
-        Planner["Codex CLI root agent<br/>planner<br/><i>via .codex/agents/planner.toml</i>"]
-        Reviewer["reviewer<br/>gpt-5.4 · read-only"]
-    end
-
-    subgraph "Level 1 — Native Subagent Worker Pool"
-        W1["Worker 1"]
-        W2["Worker 2"]
-        W3["Worker 3"]
-    end
-
-    subgraph "Level 2 — Worker Subagents"
-        impl["implementer<br/>gpt-5.4 · write-allow"]
-        analyzer["analyzer<br/>gpt-5.4-mini · read-only"]
-        tester["tester<br/>gpt-5.4-mini · write-allow"]
-    end
-
-    Planner -->|"native subagent"| W1
-    Planner -->|"native subagent"| W2
-    Planner -->|"native subagent"| W3
-
-    W1 --> impl
-    W1 --> analyzer
-    W1 --> tester
-    W2 -.->|"diff"| Reviewer
-    W1 -.->|"diff"| Reviewer
-    W3 -.->|"diff"| Reviewer
-    Reviewer -.->|"findings"| Planner
-
-    Planner -->|"APPROVED"| Merge["Merge to main"]
-    Planner -->|"CHANGES_REQUESTED"| W1
-```
+Run the full multi-agent workflow with only Codex CLI and a GPT Plus subscription -- no Claude Code needed. The planner, workers, and reviewer all run as Codex native subagents. See the [Architecture](#architecture) diagram above for the generic flow.
 
 ### Prerequisites (Codex-Only)
 

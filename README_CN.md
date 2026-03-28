@@ -1,6 +1,6 @@
 # Multi-Agent Dev Framework
 
-零自定义代码的多智能体协同开发框架：Claude Opus 负责规划和审查，Codex CLI 工作池并行实现。
+零自定义代码的多智能体协同开发框架：一个智能体负责规划和审查，工作池并行实现。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -9,60 +9,77 @@
 
 ## 为什么选择这个框架
 
-- **零自定义代码** -- 纯配置驱动，无需编排脚本。Codex CLI + MCP 桥接 = 自包含工作节点。
-- **对抗式审查循环** -- Claude 审查 GPT 的输出，在合并前捕获错误。最多 3 轮迭代。
+- **零自定义代码** -- 纯配置驱动（TOML + Markdown 技能），无需编排脚本。
+- **对抗式审查循环** -- 规划器在合并前审查工作节点的输出，最多 3 轮迭代。
 - **并行执行** -- 最多 3 个工作节点同时运行，各自在独立的 git worktree 中工作，不会产生合并冲突。
-- **模型分工** -- 复杂实现用 gpt-5.4，受限的分析和测试任务用更经济的 gpt-5.4-mini。
-- **提供商灵活性** -- 可运行于 Claude + GPT（混合模式）或仅 GPT（Codex 独立模式）。单一订阅也能完成全流程。
+- **基于角色的成本优化** -- 复杂实现用高性能模型，受限的分析和测试任务用更经济的模型。
+- **提供商灵活性** -- 可运行于 Claude + GPT（[混合模式](#快速开始)）或仅 GPT（[Codex 独立模式](#codex-独立模式)）。单一订阅也能完成全流程。
 
 ## 架构
 
 ```mermaid
 graph TB
-    Human["开发者"] --> Claude
+    Human["开发者"] --> Planner
 
     subgraph "Level 0 — 规划层"
-        Claude["Claude Opus 4<br/>规划 | 审查 | 合并<br/><i>via Claude Code</i>"]
+        Planner["规划器<br/>规划 | 审查 | 合并"]
+        Reviewer["审查器<br/>只读 · 对抗式"]
     end
 
-    subgraph "Level 1 — 工作池"
-        W1["Codex Worker 1"]
-        W2["Codex Worker 2"]
-        W3["Codex Worker 3"]
+    subgraph "Level 1 — 工作池（1-3 个工作节点，git worktree 隔离）"
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
     end
 
     subgraph "Level 2 — 子代理"
-        impl["implementer<br/>gpt-5.4 · 可写"]
-        analyzer["analyzer<br/>gpt-5.4-mini · 只读"]
-        tester["tester<br/>gpt-5.4-mini · 可写"]
+        impl["implementer<br/>可写"]
+        analyzer["analyzer<br/>只读"]
+        tester["tester<br/>可写"]
     end
 
-    Claude -->|"通过 MCP 分发"| W1
-    Claude -->|"通过 MCP 分发"| W2
-    Claude -->|"通过 MCP 分发"| W3
+    Planner -->|"分发"| W1
+    Planner -->|"分发"| W2
+    Planner -->|"分发"| W3
 
     W1 --> impl
     W1 --> analyzer
     W1 --> tester
 
-    impl -.->|"diff"| Claude
-    Claude -->|"APPROVED"| Merge["合并到 main"]
-    Claude -->|"CHANGES_REQUESTED"| W1
+    W1 -.->|"diff"| Reviewer
+    W2 -.->|"diff"| Reviewer
+    W3 -.->|"diff"| Reviewer
+    Reviewer -.->|"findings"| Planner
+
+    Planner -->|"APPROVED"| Merge["合并到 main"]
+    Planner -->|"CHANGES_REQUESTED"| W1
 ```
 
 ### 编排流程
 
 ```
 开发者请求
-  → Claude Opus 制定方案
-  → 方案审查
-  → 分发 1-3 个 Codex Worker（并行，通过 MCP）
+  → 规划器创建需求规格和实现计划
+  → 方案审查确认
+  → 分发 1-3 个 Worker（并行，隔离的 git worktree）
     → 每个 Worker 生成 analyzer/implementer/tester 子代理
-    → Worker 在隔离的 git worktree 中实现
-  → Claude Opus 审查所有 diff（对抗式审查）
+    → Worker 在隔离环境中实现
+  → 审查器检查所有 diff（对抗式审查）
   → APPROVED 或 CHANGES_REQUESTED（最多 3 轮）
-  → 合并到 main
+  → 合并到 main（经用户批准）
 ```
+
+### 实现模式
+
+上述架构与提供商无关。本框架提供两种具体实现：
+
+| 模式 | 规划器 | 工作节点 | 分发方式 | 审查方式 | 指南 |
+|------|--------|---------|----------|---------|------|
+| **混合模式** | Claude Code (Opus) | Codex CLI | MCP 桥接 (`codex-as-mcp`) | 跨模型：Claude 审查 GPT | [快速开始](#快速开始) |
+| **Codex 独立模式** | Codex CLI (GPT) | Codex 原生子代理 | 原生子代理 | 同模型 + 专用 reviewer 代理 | [Codex 独立模式](#codex-独立模式) |
+
+- **混合模式** -- 通过跨模型对抗式审查获得最强审查质量。需要 Claude Max + GPT Plus。
+- **Codex 独立模式** -- 仅需 GPT Plus 单一订阅即可运行。审查质量通过专用 `reviewer` 代理和强制检查清单来保障。详见 [docs/codex-only-guide.md](docs/codex-only-guide.md)。
 
 ## 前置条件
 
@@ -103,46 +120,7 @@ git config user.email "your-public-email@example.com"
 
 ## Codex 独立模式
 
-仅使用 Codex CLI 和 GPT Plus 订阅即可运行完整的多智能体工作流，无需 Claude Code。
-
-### 架构（Codex 独立模式）
-
-```mermaid
-graph TB
-    Human["开发者"] --> Planner
-
-    subgraph "Level 0 — 规划层"
-        Planner["Codex CLI 根代理<br/>planner<br/><i>via .codex/agents/planner.toml</i>"]
-        Reviewer["reviewer<br/>gpt-5.4 · 只读"]
-    end
-
-    subgraph "Level 1 — 原生子代理工作池"
-        W1["Worker 1"]
-        W2["Worker 2"]
-        W3["Worker 3"]
-    end
-
-    subgraph "Level 2 — Worker 子代理"
-        impl["implementer<br/>gpt-5.4 · 可写"]
-        analyzer["analyzer<br/>gpt-5.4-mini · 只读"]
-        tester["tester<br/>gpt-5.4-mini · 可写"]
-    end
-
-    Planner -->|"原生子代理"| W1
-    Planner -->|"原生子代理"| W2
-    Planner -->|"原生子代理"| W3
-
-    W1 --> impl
-    W1 --> analyzer
-    W1 --> tester
-    W2 -.->|"diff"| Reviewer
-    W1 -.->|"diff"| Reviewer
-    W3 -.->|"diff"| Reviewer
-    Reviewer -.->|"findings"| Planner
-
-    Planner -->|"APPROVED"| Merge["合并到 main"]
-    Planner -->|"CHANGES_REQUESTED"| W1
-```
+仅使用 Codex CLI 和 GPT Plus 订阅即可运行完整的多智能体工作流，无需 Claude Code。规划器、工作节点和审查器均作为 Codex 原生子代理运行。通用流程参见上方[架构](#架构)图。
 
 ### 前置条件（Codex 独立模式）
 
