@@ -332,8 +332,6 @@ web_search = "disabled"
 | `.codex/skills/task-dispatcher/` | Worker 分发规划技能 |
 | `.codex/skills/repo-working-memory/` | 持久化上下文追踪技能 |
 | `docs/skills/external-skill-review.md` | 外部技能治理策略 |
-| `meta/practice-issues-log.md` | 已知问题和实战经验（不随项目复制） |
-| `meta/skills-ecosystem-analysis.md` | Skills 生态调研（不随项目复制） |
 | `notes/working-memory/` | 活跃任务追踪目录 |
 
 ## 关键设计决策

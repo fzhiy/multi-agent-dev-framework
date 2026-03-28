@@ -333,8 +333,6 @@ Before installing external Codex skills, review them against the policy in `docs
 | `.codex/skills/task-dispatcher/` | Worker dispatch planning skill |
 | `.codex/skills/repo-working-memory/` | Persistent context tracking skill |
 | `docs/skills/external-skill-review.md` | External skill governance policy |
-| `meta/practice-issues-log.md` | Known issues and lessons (not copied to projects) |
-| `meta/skills-ecosystem-analysis.md` | Skills ecosystem research (not copied to projects) |
 | `notes/working-memory/` | Active task tracking directory |
 
 ## Key Design Decisions
