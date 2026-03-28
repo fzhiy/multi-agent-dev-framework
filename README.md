@@ -97,29 +97,30 @@ Done. Claude Code can now dispatch Codex workers via MCP.
 ### Step 1: Copy framework files
 
 ```bash
-cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,docs,notes} /path/to/your-project/
+cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,.claude,docs,notes} /path/to/your-project/
 ```
 
 This adds the following structure to your project:
 
 ```
 your-project/
-├── codex.toml                            # Codex project config
+├── .claude/commands/                     # Claude Code slash commands
+│   ├── spec.md                           # /spec — requirements → structured spec
+│   ├── plan.md                           # /plan — spec → implementation plan
+│   ├── dispatch.md                       # /dispatch — plan → Worker dispatch via MCP
+│   ├── review-workers.md                 # /review-workers — review Worker output
+│   └── status.md                         # /status — show task progress
 ├── .codex/
 │   ├── agents/
 │   │   ├── implementer.toml              # Code writer (gpt-5.4)
 │   │   ├── analyzer.toml                 # Read-only analyzer (gpt-5.4-mini)
 │   │   └── tester.toml                   # Test writer (gpt-5.4-mini)
 │   └── skills/
-│       └── repo-working-memory/          # Persistent context skill
-│           ├── SKILL.md
-│           ├── scripts/
-│           │   ├── init-worklog.sh
-│           │   └── check-complete.sh
-│           └── templates/
-│               ├── task_plan.md
-│               ├── findings.md
-│               └── progress.md
+│       ├── repo-working-memory/          # Persistent context tracking
+│       ├── requirement-spec/             # Structured spec generation
+│       ├── create-plan/                  # Implementation plan generation
+│       └── task-dispatcher/              # Worker dispatch planning
+├── codex.toml                            # Codex project config
 ├── docs/skills/
 │   └── external-skill-review.md          # Skill governance policy
 └── notes/working-memory/                 # Task tracking (gitignore or commit)
@@ -162,6 +163,35 @@ claude                         # starts Claude Code (planner)
 # Claude will dispatch workers via MCP automatically when you ask it to
 # implement features in parallel
 ```
+
+## Claude Code Slash Commands
+
+The framework includes 5 slash commands for driving the multi-agent workflow from Claude Code:
+
+| Command | Purpose | Stage |
+|---------|---------|-------|
+| `/spec <description>` | Transform a request into a structured spec with acceptance criteria | Requirements |
+| `/plan [spec-path]` | Generate 6-12 atomic action items with parallelization groups | Planning |
+| `/dispatch [plan-path]` | Create feature branches, dispatch Codex Workers via MCP | Implementation |
+| `/review-workers [task]` | Review Worker diffs, run adversarial review via GPT-5.4 | Review |
+| `/status [task]` | Show progress across all active multi-agent tasks | Monitoring |
+
+Full development cycle:
+
+```
+/spec "build feature X"  →  /plan  →  /dispatch  →  /review-workers  →  merge
+```
+
+Every command has a confirmation gate -- no automatic pushes, no merges without approval.
+
+## Codex Skills
+
+| Skill | Purpose | Trigger |
+|-------|---------|---------|
+| `requirement-spec` | Vague request → structured spec | Auto-matched by Codex |
+| `create-plan` | Spec → implementation plan with dependencies | Auto-matched by Codex |
+| `task-dispatcher` | Plan → Worker assignments with branch strategy | Auto-matched by Codex |
+| `repo-working-memory` | Persistent task tracking across sessions | Auto-matched by Codex |
 
 ## Workflow Patterns
 
@@ -286,11 +316,17 @@ Before installing external Codex skills, review them against the policy in `docs
 | File | Purpose |
 |------|---------|
 | `codex.toml` | Project-level Codex config (model, threads, sandbox) |
+| `.claude/commands/*.md` | Claude Code slash commands (/spec, /plan, /dispatch, /review-workers, /status) |
 | `.codex/agents/implementer.toml` | GPT-5.4 code writer subagent |
 | `.codex/agents/analyzer.toml` | GPT-5.4-mini read-only analyzer subagent |
 | `.codex/agents/tester.toml` | GPT-5.4-mini test writer subagent |
+| `.codex/skills/requirement-spec/` | Structured spec generation skill |
+| `.codex/skills/create-plan/` | Implementation plan generation skill |
+| `.codex/skills/task-dispatcher/` | Worker dispatch planning skill |
 | `.codex/skills/repo-working-memory/` | Persistent context tracking skill |
 | `docs/skills/external-skill-review.md` | External skill governance policy |
+| `docs/practice-issues-log.md` | Known issues and lessons from real-world usage |
+| `docs/skills-ecosystem-analysis.md` | Skills ecosystem research and gap analysis |
 | `notes/working-memory/` | Active task tracking directory |
 
 ## Key Design Decisions

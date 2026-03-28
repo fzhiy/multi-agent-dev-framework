@@ -70,6 +70,60 @@
   3. 或者提供 .pyi stub 文件给依赖方 Worker
   4. Planner 承担集成责任：合并后修复接口问题
 
+## 实践总结: 已验证有效的模式
+
+以下模式在 hot-repo 项目中验证通过，已固化为框架标准能力：
+
+### 1. Claude Code Slash Commands 驱动开发流程
+- `/spec` → `/plan` → `/dispatch` → `/review-workers` → `/status`
+- 每步有确认门控，不自动 push/merge
+- 已添加到 `.claude/commands/`，复制框架即可用
+
+### 2. Codex Skills 覆盖规划到分发全链路
+- `requirement-spec`: 模糊需求 → 结构化 spec
+- `create-plan`: spec → 6-12 步原子计划 + 并行分组
+- `task-dispatcher`: 计划 → Worker 分配 + feature branch 策略
+- `repo-working-memory`: 跨会话任务追踪
+- 已添加到 `.codex/skills/`
+
+### 3. 对抗式 Review 有效捕获接口 Bug
+- GPT-5.4 通过 `codex-review` MCP 审查，发现 4 个 Critical 接口不匹配
+- Claude (Planner) 承担集成修复职责
+- Review → Fix → Re-verify 循环在 1 轮内闭环
+
+### 4. 按任务规模灵活调整流程
+- 大型功能: spec → plan → dispatch → 3 Workers
+- 中型任务: plan → dispatch → 1-2 Workers
+- Review 小修复: 直接 spawn_agent → 1 Worker
+
+---
+
+## 框架迭代路线图
+
+### 高优先级 (解决架构级问题)
+
+| 问题 | 方案 | 对应 Issue |
+|------|------|-----------|
+| Worker 共享 cwd 导致分支污染 | 在 dispatch 前由 Planner 预创建 git worktree，传入独立 cwd | #4 |
+| Worker 间接口不匹配 | 在 worker spec 中增加"接口契约"，定义跨 Worker 的函数签名和类型 | #5 |
+| Claude 可能越过架构直接实现 | 在 CLAUDE.md 中添加行为约束规则 | #1 |
+
+### 中优先级 (提升效率)
+
+| 方向 | 方案 |
+|------|------|
+| Review→Fix 自动循环 | 在 `/review-workers` 中增加自动重新分发修改任务的逻辑 |
+| 接口 stub 生成 | 在 `/dispatch` 中为依赖方 Worker 自动生成 .pyi stub 文件 |
+| 测试覆盖率追踪 | 在 `/status` 中集成 pytest --cov 结果汇总 |
+
+### 低优先级 (生态扩展)
+
+| 方向 | 方案 |
+|------|------|
+| 安装 GitHub MCP Server | 自动化 PR/Issue 管理 |
+| 安装 create-plan (openai/skills) | 评估官方实验性 skill |
+| 统一 token 成本追踪 | 在 progress.md 中记录每个 Worker 的 token 消耗 |
+
 ## 待记录
 
 - [ ] Codex Worker MCP 调用的实际延迟和可靠性
@@ -77,3 +131,4 @@
 - [ ] 复杂任务的计划分解粒度
 - [x] Review 迭代的实际轮次和效率 → 第一轮 Review 发现 4 个 Critical 问题
 - [ ] token 消耗和成本
+- [ ] git worktree 隔离方案的实际验证

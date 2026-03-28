@@ -97,29 +97,30 @@ claude mcp add codex-sub -- uvx codex-as-mcp@latest
 ### 第一步：复制框架文件
 
 ```bash
-cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,docs,notes} /path/to/your-project/
+cp -r ~/multi-agent-dev-framework/{codex.toml,.codex,.claude,docs,notes} /path/to/your-project/
 ```
 
 这会为你的项目添加以下结构：
 
 ```
 your-project/
-├── codex.toml                            # Codex 项目配置
+├── .claude/commands/                     # Claude Code 斜杠命令
+│   ├── spec.md                           # /spec — 需求 → 结构化规格
+│   ├── plan.md                           # /plan — 规格 → 实现计划
+│   ├── dispatch.md                       # /dispatch — 计划 → Worker 分发
+│   ├── review-workers.md                 # /review-workers — 审查 Worker 输出
+│   └── status.md                         # /status — 查看任务进度
 ├── .codex/
 │   ├── agents/
 │   │   ├── implementer.toml              # 代码编写器 (gpt-5.4)
 │   │   ├── analyzer.toml                 # 只读分析器 (gpt-5.4-mini)
 │   │   └── tester.toml                   # 测试编写器 (gpt-5.4-mini)
 │   └── skills/
-│       └── repo-working-memory/          # 持久化上下文技能
-│           ├── SKILL.md
-│           ├── scripts/
-│           │   ├── init-worklog.sh
-│           │   └── check-complete.sh
-│           └── templates/
-│               ├── task_plan.md
-│               ├── findings.md
-│               └── progress.md
+│       ├── repo-working-memory/          # 持久化上下文追踪
+│       ├── requirement-spec/             # 结构化需求规格生成
+│       ├── create-plan/                  # 实现计划生成
+│       └── task-dispatcher/              # Worker 分发规划
+├── codex.toml                            # Codex 项目配置
 ├── docs/skills/
 │   └── external-skill-review.md          # 技能治理策略
 └── notes/working-memory/                 # 任务追踪目录
@@ -161,6 +162,35 @@ claude                         # 启动 Claude Code（规划器）
 
 # 当你要求并行实现功能时，Claude 会自动通过 MCP 分发工作节点
 ```
+
+## Claude Code 斜杠命令
+
+框架包含 5 个斜杠命令，用于在 Claude Code 中驱动多智能体工作流：
+
+| 命令 | 用途 | 阶段 |
+|------|------|------|
+| `/spec <描述>` | 将需求转为结构化规格，含验收标准 | 需求定义 |
+| `/plan [spec路径]` | 生成 6-12 个原子级实现步骤，含并行分组 | 开发规划 |
+| `/dispatch [plan路径]` | 创建 feature branch，通过 MCP 分发 Codex Worker | 任务分发 |
+| `/review-workers [task]` | 审查 Worker diff，可调 GPT-5.4 对抗审查 | 代码审查 |
+| `/status [task]` | 查看所有活跃任务的进度 | 进度监控 |
+
+完整开发流程：
+
+```
+/spec "实现功能 X"  →  /plan  →  /dispatch  →  /review-workers  →  合并
+```
+
+每个命令都有确认门控 — 不会自动推送，合并前必须用户批准。
+
+## Codex Skills
+
+| 技能 | 用途 | 触发方式 |
+|------|------|---------|
+| `requirement-spec` | 模糊需求 → 结构化规格 | Codex 自动匹配 |
+| `create-plan` | 规格 → 含依赖关系的实现计划 | Codex 自动匹配 |
+| `task-dispatcher` | 计划 → Worker 任务分配和分支策略 | Codex 自动匹配 |
+| `repo-working-memory` | 跨会话的持久化任务追踪 | Codex 自动匹配 |
 
 ## 工作流模式
 
@@ -285,11 +315,17 @@ web_search = "disabled"
 | 文件 | 用途 |
 |------|------|
 | `codex.toml` | 项目级 Codex 配置（模型、线程、沙箱） |
+| `.claude/commands/*.md` | Claude Code 斜杠命令（/spec, /plan, /dispatch, /review-workers, /status） |
 | `.codex/agents/implementer.toml` | GPT-5.4 代码编写子代理 |
 | `.codex/agents/analyzer.toml` | GPT-5.4-mini 只读分析子代理 |
 | `.codex/agents/tester.toml` | GPT-5.4-mini 测试编写子代理 |
+| `.codex/skills/requirement-spec/` | 结构化需求规格生成技能 |
+| `.codex/skills/create-plan/` | 实现计划生成技能 |
+| `.codex/skills/task-dispatcher/` | Worker 分发规划技能 |
 | `.codex/skills/repo-working-memory/` | 持久化上下文追踪技能 |
 | `docs/skills/external-skill-review.md` | 外部技能治理策略 |
+| `docs/practice-issues-log.md` | 已知问题和实战经验记录 |
+| `docs/skills-ecosystem-analysis.md` | Skills 生态调研和差距分析 |
 | `notes/working-memory/` | 活跃任务追踪目录 |
 
 ## 关键设计决策
