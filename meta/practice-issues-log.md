@@ -41,7 +41,7 @@
 
 - **日期**: 2026-03-28
 - **阶段**: Worker 并行分发
-- **问题**: `spawn_agents_parallel` 的 3 个 Worker 共享同一个 `/home/fy274/projects/hot_repo` 目录。每个 Worker 执行 `git checkout feat/xxx` 时互相冲突，导致:
+- **问题**: `spawn_agents_parallel` 的 3 个 Worker 共享同一个项目目录。每个 Worker 执行 `git checkout feat/xxx` 时互相冲突，导致:
   - 所有 Worker 的代码变更泄漏到其他分支
   - feat/infra 包含了 scraper 和 notifier 的 commit
   - 分支不再代表独立的工作单元
