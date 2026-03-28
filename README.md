@@ -92,6 +92,14 @@ claude mcp add codex-sub -- uvx codex-as-mcp@latest
 
 Done. Claude Code can now dispatch Codex workers via MCP.
 
+**Optional**: Set project-level git identity to avoid leaking your global config:
+
+```bash
+cd /path/to/your-project
+git config user.name "Your Name"
+git config user.email "your-public-email@example.com"
+```
+
 ## Using in a New Project
 
 ### Step 1: Copy framework files
@@ -325,8 +333,8 @@ Before installing external Codex skills, review them against the policy in `docs
 | `.codex/skills/task-dispatcher/` | Worker dispatch planning skill |
 | `.codex/skills/repo-working-memory/` | Persistent context tracking skill |
 | `docs/skills/external-skill-review.md` | External skill governance policy |
-| `docs/practice-issues-log.md` | Known issues and lessons from real-world usage |
-| `docs/skills-ecosystem-analysis.md` | Skills ecosystem research and gap analysis |
+| `meta/practice-issues-log.md` | Known issues and lessons (not copied to projects) |
+| `meta/skills-ecosystem-analysis.md` | Skills ecosystem research (not copied to projects) |
 | `notes/working-memory/` | Active task tracking directory |
 
 ## Key Design Decisions

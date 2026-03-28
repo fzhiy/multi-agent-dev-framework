@@ -92,6 +92,14 @@ claude mcp add codex-sub -- uvx codex-as-mcp@latest
 
 完成。Claude Code 现在可以通过 MCP 分发 Codex 工作节点了。
 
+**可选**：设置项目级 git 身份，避免泄漏全局配置中的个人信息：
+
+```bash
+cd /path/to/your-project
+git config user.name "Your Name"
+git config user.email "your-public-email@example.com"
+```
+
 ## 在新项目中使用
 
 ### 第一步：复制框架文件
@@ -324,8 +332,8 @@ web_search = "disabled"
 | `.codex/skills/task-dispatcher/` | Worker 分发规划技能 |
 | `.codex/skills/repo-working-memory/` | 持久化上下文追踪技能 |
 | `docs/skills/external-skill-review.md` | 外部技能治理策略 |
-| `docs/practice-issues-log.md` | 已知问题和实战经验记录 |
-| `docs/skills-ecosystem-analysis.md` | Skills 生态调研和差距分析 |
+| `meta/practice-issues-log.md` | 已知问题和实战经验（不随项目复制） |
+| `meta/skills-ecosystem-analysis.md` | Skills 生态调研（不随项目复制） |
 | `notes/working-memory/` | 活跃任务追踪目录 |
 
 ## 关键设计决策
