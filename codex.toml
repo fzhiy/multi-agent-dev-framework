@@ -17,3 +17,12 @@ max_depth = 1
 # Default sandbox mode for the root agent.
 # Subagents override this via their own TOML configs.
 mode = "write-allow"
+
+[framework]
+# "hybrid" = Claude Planner + Codex Workers (default, requires Claude Max + GPT Plus)
+# "codex-only" = Codex Planner + Codex Workers (requires GPT Plus only)
+mode = "hybrid"
+
+# Enable second-round adversarial review via codex-review MCP server.
+# Only effective in codex-only mode. Requires: claude mcp add codex-review ...
+enhanced_review = false
