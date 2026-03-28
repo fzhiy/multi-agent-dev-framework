@@ -18,56 +18,44 @@
 ## 架构
 
 ```mermaid
-graph TB
-    Human["开发者"] --> Planner
+graph TD
+    Dev[开发者] --> Planner[规划器]
 
-    subgraph "Level 0 — 规划层"
-        Planner["规划器<br/>规划 | 审查 | 合并"]
-        Reviewer["审查器<br/>只读 · 对抗式"]
+    subgraph L0["Level 0 — 规划与审查"]
+        Planner
+        Reviewer["审查器（只读）"]
     end
 
-    subgraph "Level 1 — 工作池（1-3 个工作节点，git worktree 隔离）"
-        W1["Worker 1"]
-        W2["Worker 2"]
-        W3["Worker 3"]
+    subgraph L1["Level 1 — 工作池"]
+        W1[Worker 1]
+        W2[Worker 2]
+        W3[Worker 3]
     end
 
-    subgraph "Level 2 — 子代理"
-        impl["implementer<br/>可写"]
-        analyzer["analyzer<br/>只读"]
-        tester["tester<br/>可写"]
+    subgraph L2["Level 2 — 子代理"]
+        impl[implementer]
+        analyzer[analyzer]
+        tester[tester]
     end
 
-    Planner -->|"分发"| W1
-    Planner -->|"分发"| W2
-    Planner -->|"分发"| W3
+    Planner -->|分发| W1
+    Planner -->|分发| W2
+    Planner -->|分发| W3
 
     W1 --> impl
     W1 --> analyzer
     W1 --> tester
 
-    W1 -.->|"diff"| Reviewer
-    W2 -.->|"diff"| Reviewer
-    W3 -.->|"diff"| Reviewer
-    Reviewer -.->|"findings"| Planner
+    W1 -.->|diff| Reviewer
+    W2 -.->|diff| Reviewer
+    W3 -.->|diff| Reviewer
+    Reviewer -.->|findings| Planner
 
-    Planner -->|"APPROVED"| Merge["合并到 main"]
-    Planner -->|"CHANGES_REQUESTED"| W1
+    Planner -->|APPROVED| Merge[合并到 main]
+    Planner -.->|CHANGES_REQUESTED| W1
 ```
 
-### 编排流程
-
-```
-开发者请求
-  → 规划器创建需求规格和实现计划
-  → 方案审查确认
-  → 分发 1-3 个 Worker（并行，隔离的 git worktree）
-    → 每个 Worker 生成 analyzer/implementer/tester 子代理
-    → Worker 在隔离环境中实现
-  → 审查器检查所有 diff（对抗式审查）
-  → APPROVED 或 CHANGES_REQUESTED（最多 3 轮）
-  → 合并到 main（经用户批准）
-```
+每个工作节点在独立的 git worktree 和 feature branch 中运行。规划器负责全生命周期编排：**spec** → **plan** → **dispatch** → **review** → **merge**（每个环节均需用户确认）。
 
 ### 实现模式
 
@@ -75,79 +63,39 @@ graph TB
 
 | 模式 | 规划器 | 工作节点 | 分发方式 | 审查方式 | 指南 |
 |------|--------|---------|----------|---------|------|
-| **混合模式** | Claude Code (Opus) | Codex CLI | MCP 桥接 (`codex-as-mcp`) | 跨模型：Claude 审查 GPT | [快速开始](#快速开始) |
-| **Codex 独立模式** | Codex CLI (GPT) | Codex 原生子代理 | 原生子代理 | 同模型 + 专用 reviewer 代理 | [Codex 独立模式](#codex-独立模式) |
+| **混合模式** | Claude Code | Codex CLI | MCP 桥接 | 跨模型：Claude 审查 GPT | [docs/hybrid-mode-guide.md](docs/hybrid-mode-guide.md) |
+| **Codex 独立模式** | Codex CLI | Codex 原生子代理 | 原生子代理 | 同模型 + reviewer 代理 | [docs/codex-only-guide.md](docs/codex-only-guide.md) |
 
-- **混合模式** -- 通过跨模型对抗式审查获得最强审查质量。需要 Claude Max + GPT Plus。
-- **Codex 独立模式** -- 仅需 GPT Plus 单一订阅即可运行。审查质量通过专用 `reviewer` 代理和强制检查清单来保障。详见 [docs/codex-only-guide.md](docs/codex-only-guide.md)。
-
-## 前置条件
-
-| 工具 | 用途 | 适用模式 | 安装 |
-|------|------|----------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 规划器/审查器 | 混合模式 | `npm i -g @anthropic-ai/claude-code` |
-| [Codex CLI](https://github.com/openai/codex) | 规划器 + 工作节点 | 混合模式、Codex 独立模式 | `npm i -g @openai/codex` |
-| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP 桥接 | 混合模式 | 通过 `uvx` 自动安装 |
-| tmux（可选） | 会话管理 | 混合模式、Codex 独立模式 | `apt install tmux` / `brew install tmux` |
-
-### 订阅要求
-
-- **混合模式**：1x **Claude Max** + 1-3x **ChatGPT Plus**
-- **Codex 独立模式**：1x **ChatGPT Plus**（单账号即可）
+- **混合模式** -- 通过跨模型对抗式审查获得最强审查质量。需要 Claude Max + GPT Plus。详见[混合模式指南](docs/hybrid-mode-guide.md)。
+- **Codex 独立模式** -- 仅需 GPT Plus 单一订阅即可运行。审查质量通过专用 `reviewer` 代理和强制检查清单来保障。详见 [Codex 独立模式指南](docs/codex-only-guide.md)。
 
 ## 快速开始
 
-```bash
-# 1. 安装 Codex CLI
-npm i -g @openai/codex
-
-# 2. 登录你的 GPT Plus 账号
-codex login
-
-# 3. 在 Claude Code 中注册 MCP 桥接
-claude mcp add codex-sub -- uvx codex-as-mcp@latest
-```
-
-完成。Claude Code 现在可以通过 MCP 分发 Codex 工作节点了。
-
-**可选**：设置项目级 git 身份，避免泄漏全局配置中的个人信息：
+### 混合模式（Claude + Codex）
 
 ```bash
-cd /path/to/your-project
-git config user.name "Your Name"
-git config user.email "your-public-email@example.com"
+npm i -g @openai/codex          # 安装 Codex CLI
+codex login                     # 登录 GPT Plus
+claude mcp add codex-sub -- uvx codex-as-mcp@latest  # 注册 MCP 桥接
+claude                          # 启动 Claude Code（规划器）
 ```
 
-## Codex 独立模式
+然后使用斜杠命令驱动工作流：`/spec` → `/plan` → `/dispatch` → `/review-workers` → 合并。
 
-仅使用 Codex CLI 和 GPT Plus 订阅即可运行完整的多智能体工作流，无需 Claude Code。规划器、工作节点和审查器均作为 Codex 原生子代理运行。通用流程参见上方[架构](#架构)图。
+详见 [docs/hybrid-mode-guide.md](docs/hybrid-mode-guide.md) 获取完整设置、前置条件和工作流模式。
 
-### 前置条件（Codex 独立模式）
+### Codex 独立模式（仅 GPT）
 
-| 工具 | 用途 | 安装 |
-|------|------|------|
-| [Codex CLI](https://github.com/openai/codex) | 规划器 + 工作节点 | `npm i -g @openai/codex` |
+```bash
+npm i -g @openai/codex          # 安装 Codex CLI
+codex login                     # 登录 GPT Plus
+# 编辑 codex.toml：设置 framework.mode = "codex-only"
+codex                           # 启动 Codex（通过 AGENTS.md 提供规划器指令）
+```
 
-订阅：1x ChatGPT Plus（单账号即可）
+然后自然交互：`"Write a spec for X"` → `"Create a plan"` → `"Dispatch workers"` → `"Review output"`。
 
-### 快速开始（Codex 独立模式）
-
-1. 安装 Codex CLI。
-2. 在 `codex.toml` 中设置 `framework.mode = "codex-only"`。
-3. 在项目目录中运行 `codex`（AGENTS.md 自动提供规划器指令）。
-4. 直接自然交互：`"Write a spec for feature X"`、`"Create a plan"`、`"Dispatch workers"`、`"Review output"`。
-
-### 交互模型
-
-| 混合模式 | Codex 独立模式 |
-|----------|----------------|
-| `/spec <desc>` | `"Write a spec for <desc>"` |
-| `/plan` | `"Create a plan from this spec"` |
-| `/dispatch` | `"Dispatch workers"` |
-| `/review-workers` | `"Review the worker output"` |
-| `/status` | `"Show task status"` |
-
-详见 [docs/codex-only-guide.md](docs/codex-only-guide.md) 获取完整的设置与工作流指南。
+详见 [docs/codex-only-guide.md](docs/codex-only-guide.md) 获取完整设置、前置条件和工作流示例。
 
 ## 在新项目中使用
 

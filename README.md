@@ -18,136 +18,84 @@ Zero-custom-code multi-agent development framework: one agent plans and reviews,
 ## Architecture
 
 ```mermaid
-graph TB
-    Human["Human Developer"] --> Planner
+graph TD
+    Dev[Developer] --> Planner
 
-    subgraph "Level 0 — Planner"
-        Planner["Planner Agent<br/>Plan | Review | Merge"]
-        Reviewer["Reviewer<br/>read-only · adversarial"]
+    subgraph L0["Level 0 — Planning & Review"]
+        Planner
+        Reviewer["Reviewer (read-only)"]
     end
 
-    subgraph "Level 1 — Worker Pool (1-3 workers, git worktree isolation)"
-        W1["Worker 1"]
-        W2["Worker 2"]
-        W3["Worker 3"]
+    subgraph L1["Level 1 — Worker Pool"]
+        W1[Worker 1]
+        W2[Worker 2]
+        W3[Worker 3]
     end
 
-    subgraph "Level 2 — Subagents"
-        impl["implementer<br/>write-allow"]
-        analyzer["analyzer<br/>read-only"]
-        tester["tester<br/>write-allow"]
+    subgraph L2["Level 2 — Subagents"]
+        impl[implementer]
+        analyzer[analyzer]
+        tester[tester]
     end
 
-    Planner -->|"dispatch"| W1
-    Planner -->|"dispatch"| W2
-    Planner -->|"dispatch"| W3
+    Planner -->|dispatch| W1
+    Planner -->|dispatch| W2
+    Planner -->|dispatch| W3
 
     W1 --> impl
     W1 --> analyzer
     W1 --> tester
 
-    W1 -.->|"diff"| Reviewer
-    W2 -.->|"diff"| Reviewer
-    W3 -.->|"diff"| Reviewer
-    Reviewer -.->|"findings"| Planner
+    W1 -.->|diff| Reviewer
+    W2 -.->|diff| Reviewer
+    W3 -.->|diff| Reviewer
+    Reviewer -.->|findings| Planner
 
-    Planner -->|"APPROVED"| Merge["Merge to main"]
-    Planner -->|"CHANGES_REQUESTED"| W1
+    Planner -->|APPROVED| Merge[Merge to main]
+    Planner -.->|CHANGES_REQUESTED| W1
 ```
 
-### Orchestration Flow
-
-```
-Human Request
-  → Planner creates spec and plan
-  → Plan reviewed and confirmed
-  → Dispatches 1-3 Workers (parallel, isolated git worktrees)
-    → Each worker spawns analyzer/implementer/tester subagents
-    → Workers implement in isolation
-  → Reviewer checks all diffs (adversarial review)
-  → APPROVED or CHANGES_REQUESTED (max 3 iterations)
-  → Merged to main (with user approval)
-```
+Each worker runs in an isolated git worktree on its own feature branch. The planner orchestrates the full lifecycle: **spec** → **plan** → **dispatch** → **review** → **merge** (with user approval at every gate).
 
 ### Implementation Modes
 
-The architecture above is provider-agnostic. This framework ships with two concrete implementations:
+The architecture is provider-agnostic. This framework ships with two concrete implementations:
 
 | Mode | Planner | Workers | Dispatch | Review | Guide |
 |------|---------|---------|----------|--------|-------|
-| **Hybrid** | Claude Code (Opus) | Codex CLI | MCP bridge (`codex-as-mcp`) | Cross-model: Claude reviews GPT | [Quick Start](#quick-start) |
-| **Codex-only** | Codex CLI (GPT) | Codex native subagents | Native subagent spawning | Same-model + dedicated reviewer agent | [Codex-Only Mode](#codex-only-mode) |
+| **Hybrid** | Claude Code | Codex CLI | MCP bridge | Cross-model: Claude reviews GPT | [docs/hybrid-mode-guide.md](docs/hybrid-mode-guide.md) |
+| **Codex-only** | Codex CLI | Codex native subagents | Native subagent | Same-model + reviewer agent | [docs/codex-only-guide.md](docs/codex-only-guide.md) |
 
-- **Hybrid mode** -- strongest review quality through cross-model adversarial critique. Requires Claude Max + GPT Plus.
-- **Codex-only mode** -- single-subscription operation with GPT Plus only. Review mitigated by dedicated `reviewer` agent with mandatory checklist. See [docs/codex-only-guide.md](docs/codex-only-guide.md).
-
-## Prerequisites
-
-| Tool | Purpose | Required In | Install |
-|------|---------|-------------|---------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Level 0 planner/reviewer | Hybrid mode | `npm i -g @anthropic-ai/claude-code` |
-| [Codex CLI](https://github.com/openai/codex) | Planner + Workers | Hybrid mode, Codex-only mode | `npm i -g @openai/codex` |
-| [codex-as-mcp](https://github.com/kky42/codex-as-mcp) | MCP bridge | Hybrid mode | auto-installed via `uvx` |
-| tmux (optional) | Session management | Hybrid mode, Codex-only mode | `apt install tmux` / `brew install tmux` |
-
-### Subscriptions
-
-- **Hybrid mode**: 1x **Claude Max** + 1-3x **ChatGPT Plus**
-- **Codex-only mode**: 1x **ChatGPT Plus** (single account sufficient)
+- **Hybrid mode** -- strongest review quality through cross-model adversarial critique. Requires Claude Max + GPT Plus. See [hybrid mode guide](docs/hybrid-mode-guide.md).
+- **Codex-only mode** -- single-subscription operation with GPT Plus only. Review quality mitigated by dedicated `reviewer` agent with mandatory checklist. See [codex-only mode guide](docs/codex-only-guide.md).
 
 ## Quick Start
 
-```bash
-# 1. Install Codex CLI
-npm i -g @openai/codex
-
-# 2. Login to your GPT Plus account(s)
-codex login
-
-# 3. Register the MCP bridge in Claude Code
-claude mcp add codex-sub -- uvx codex-as-mcp@latest
-```
-
-Done. Claude Code can now dispatch Codex workers via MCP.
-
-**Optional**: Set project-level git identity to avoid leaking your global config:
+### Hybrid Mode (Claude + Codex)
 
 ```bash
-cd /path/to/your-project
-git config user.name "Your Name"
-git config user.email "your-public-email@example.com"
+npm i -g @openai/codex          # Install Codex CLI
+codex login                     # Login to GPT Plus
+claude mcp add codex-sub -- uvx codex-as-mcp@latest  # Register MCP bridge
+claude                          # Start Claude Code (planner)
 ```
 
-## Codex-Only Mode
+Then drive the workflow: `/spec` → `/plan` → `/dispatch` → `/review-workers` → merge.
 
-Run the full multi-agent workflow with only Codex CLI and a GPT Plus subscription -- no Claude Code needed. The planner, workers, and reviewer all run as Codex native subagents. See the [Architecture](#architecture) diagram above for the generic flow.
+See [docs/hybrid-mode-guide.md](docs/hybrid-mode-guide.md) for full setup, prerequisites, and workflow patterns.
 
-### Prerequisites (Codex-Only)
+### Codex-Only Mode (GPT only)
 
-| Tool | Purpose | Install |
-|------|---------|---------|
-| [Codex CLI](https://github.com/openai/codex) | Planner + Workers | `npm i -g @openai/codex` |
+```bash
+npm i -g @openai/codex          # Install Codex CLI
+codex login                     # Login to GPT Plus
+# Edit codex.toml: set framework.mode = "codex-only"
+codex                           # Start Codex (planner via AGENTS.md)
+```
 
-Subscriptions: 1x ChatGPT Plus (single account sufficient)
+Then interact naturally: `"Write a spec for X"` → `"Create a plan"` → `"Dispatch workers"` → `"Review output"`.
 
-### Quick Start (Codex-Only)
-
-1. Install Codex CLI.
-2. Set `framework.mode = "codex-only"` in `codex.toml`.
-3. Run `codex` in the project directory (AGENTS.md provides planner instructions automatically).
-4. Interact naturally: `"Write a spec for feature X"`, `"Create a plan"`, `"Dispatch workers"`, `"Review output"`.
-
-### Interaction Model
-
-| Hybrid Mode | Codex-Only Mode |
-|-------------|-----------------|
-| `/spec <desc>` | `"Write a spec for <desc>"` |
-| `/plan` | `"Create a plan from this spec"` |
-| `/dispatch` | `"Dispatch workers"` |
-| `/review-workers` | `"Review the worker output"` |
-| `/status` | `"Show task status"` |
-
-See [docs/codex-only-guide.md](docs/codex-only-guide.md) for the full setup and workflow guide.
+See [docs/codex-only-guide.md](docs/codex-only-guide.md) for full setup, prerequisites, and workflow walkthrough.
 
 ## Using in a New Project
 
