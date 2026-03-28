@@ -78,6 +78,23 @@ Each worker spec must include:
 3. **Branch**: Which feature branch to work on
 4. **Tests**: How to verify the implementation
 5. **Constraints**: Coding standards, dependencies, patterns to follow
+6. **Interface Contract** (if other Workers depend on this module):
+
+```
+## Interface Contract
+Other modules will import from this Worker's output.
+Exact signatures that MUST be implemented:
+
+- `function_name(param1: type, param2: type) -> return_type`
+- `ClassName.method(param: type) -> return_type`
+
+Config keys this module expects:
+- `channel.key_name`: type — description
+```
+
+Workers that depend on other Workers' modules MUST receive the interface contract
+in their spec so they call functions with correct names, types, and parameter order.
+If a Worker's output will be imported by another module, define the contract before dispatch.
 
 ### Step 6: Dispatch via MCP
 
