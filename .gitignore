@@ -1,6 +1,9 @@
 # Working memory (per-task tracking, not framework content)
 notes/working-memory/*/
 
+# Internal dev notes (local only, not part of framework distribution)
+meta/
+
 # OS
 .DS_Store
 Thumbs.db
