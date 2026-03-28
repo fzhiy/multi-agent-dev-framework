@@ -37,10 +37,43 @@
   1. 定义默认分支策略: `feat/<task-slug>` → PR → Review → Merge to main
   2. 在 Worker 配置中默认创建 feature branch
 
+## Issue #4: codex-as-mcp 共享工作目录导致分支污染
+
+- **日期**: 2026-03-28
+- **阶段**: Worker 并行分发
+- **问题**: `spawn_agents_parallel` 的 3 个 Worker 共享同一个 `/home/fy274/projects/hot_repo` 目录。每个 Worker 执行 `git checkout feat/xxx` 时互相冲突，导致:
+  - 所有 Worker 的代码变更泄漏到其他分支
+  - feat/infra 包含了 scraper 和 notifier 的 commit
+  - 分支不再代表独立的工作单元
+- **根因**: `codex-as-mcp` 的 `spawn_agents_parallel` 在同一个 cwd 中并行执行，没有 git worktree 隔离。框架文档描述了 worktree 隔离但 MCP 桥接层不支持
+- **影响**: 分支策略失效，无法做真正的并行隔离开发
+- **修复建议**:
+  1. 在 Worker spec 中要求 Worker 自己创建 worktree: `git worktree add ../hot_repo-scraper feat/scraper`
+  2. 或在分发前由 Planner 预创建 worktrees，然后传入不同的 cwd
+  3. 长期方案: 在 task-dispatcher skill 中内置 worktree 管理逻辑
+  4. 对于 `codex-as-mcp`，可能需要支持 per-agent cwd 参数
+
+## Issue #5: Worker 间接口不匹配（最常见的多 Agent 问题）
+
+- **日期**: 2026-03-28
+- **阶段**: Review
+- **问题**: GPT-5.4 对抗式审查发现:
+  - Worker 3 的 main.py 用 `_invoke_compatible()` 反射调用替代直接函数调用
+  - main.py 传 `generated_at`(datetime) 但 scraper 期望 `date_str`(string)
+  - notifier.dispatch 签名参数名与 main.py 传入的不匹配
+  - config key 不一致: `to` vs `to_addrs`, `url` vs `bark_url`
+- **根因**: Worker 3 不知道 Worker 1 和 Worker 2 的实际函数签名，Spec 中只描述了功能而非精确的函数签名和参数类型
+- **影响**: 模块间接口不兼容，运行时会报错
+- **修复建议**:
+  1. 在 task-dispatcher skill 中增加"接口契约"部分，明确定义跨 Worker 的函数签名
+  2. 对于有依赖关系的模块（如 main.py 依赖 scraper 和 notifier），应在独立模块完成后再分发
+  3. 或者提供 .pyi stub 文件给依赖方 Worker
+  4. Planner 承担集成责任：合并后修复接口问题
+
 ## 待记录
 
 - [ ] Codex Worker MCP 调用的实际延迟和可靠性
-- [ ] Worker 之间的状态同步问题
+- [x] Worker 之间的状态同步问题 → Issue #4
 - [ ] 复杂任务的计划分解粒度
-- [ ] Review 迭代的实际轮次和效率
+- [x] Review 迭代的实际轮次和效率 → 第一轮 Review 发现 4 个 Critical 问题
 - [ ] token 消耗和成本
